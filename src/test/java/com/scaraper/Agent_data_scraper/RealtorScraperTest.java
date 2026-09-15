@@ -104,30 +104,53 @@ public class RealtorScraperTest extends BaseTest {
             }
         }
 
-        // ==========================================
-        // CHECK CSV FILE
-        // ==========================================
+     // ==========================================
+     // CREATE FRESH CSV FILE
+     // ==========================================
 
-        File csvFile =
-                new File(CSV_FILE);
+     File csvFile = new File(CSV_FILE);
 
-        boolean writeHeader =
-                !csvFile.exists()
-                        || csvFile.length() == 0;
+     if (csvFile.exists()) {
+         csvFile.delete();
+     }
 
-        // ==========================================
-        // OPEN CSV IN APPEND MODE
-        // ==========================================
+     try (
+             BufferedWriter writer =
+                     new BufferedWriter(
+                             new FileWriter(
+                                     CSV_FILE,
+                                     false
+                             )
+                     )
+     ) {
 
-        try (
-                BufferedWriter writer =
-                        new BufferedWriter(
-                                new FileWriter(
-                                        CSV_FILE,
-                                        true
-                                )
-                        )
-        ) {
+         // ==========================================
+         // WRITE CSV HEADER
+         // ==========================================
+
+         writer.write(
+                 "Agent Name,Title,Agent Phone 1,Agent Phone 2,"
+                 + "Facebook,LinkedIn,Instagram,Twitter,"
+                 + "Realtor Website,Office Name,Office Type,Office Address,"
+                 + "Office Phone 1,Office Phone 2,Office Fax,Office Telephone,"
+                 + "Office Website,Agent URL"
+         );
+
+         writer.newLine();
+         writer.flush();
+
+         // ==========================================
+         // YOUR URL PROCESSING LOOP HERE
+         // ==========================================
+
+         for (String agentUrl : agentUrls) {
+
+             // Open fresh Chrome
+             // Scrape agent
+             // Write result
+             // Close Chrome
+         }
+     } {
 
             // ==========================================
             // CSV HEADERS
