@@ -128,13 +128,13 @@ public class RealtorScraperTest extends BaseTest {
          // WRITE CSV HEADER
          // ==========================================
 
-         writer.write(
-                 "Agent Name,Title,Agent Phone 1,Agent Phone 2,"
-                 + "Facebook,LinkedIn,Instagram,Twitter,"
-                 + "Realtor Website,Office Name,Office Type,Office Address,"
-                 + "Office Phone 1,Office Phone 2,Office Fax,Office Telephone,"
-                 + "Office Website,Agent URL"
-         );
+        writer.write(
+        "Agent Name,Title,Agent Phone 1,Agent Phone 2,"
+        + "Facebook,LinkedIn,Instagram,Twitter,"
+        + "Realtor Website,Office Name,Office Type,Office Address,"
+        + "Office Phone 1,Office Phone 2,"
+        + "Office Website,Agent URL"
+);
 
          writer.newLine();
          writer.flush();
