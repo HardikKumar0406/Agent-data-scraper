@@ -88,17 +88,45 @@ public class RealtorScraperTest extends BaseTest {
         }
 
         // ==========================================
-        // CHECK CSV FILE
+        // CREATE FRESH CSV
         // ==========================================
 
         File csvFile = new File(CSV_FILE);
 
-        boolean writeHeader =
-                !csvFile.exists()
-                        || csvFile.length() == 0;
+        try {
+
+            // Delete old CSV before every run
+            if (csvFile.exists()) {
+
+                if (csvFile.delete()) {
+
+                    System.out.println(
+                            "Old CSV deleted."
+                    );
+
+                } else {
+
+                    System.out.println(
+                            "Unable to delete old CSV."
+                    );
+
+                    return;
+                }
+            }
+
+        } catch (Exception e) {
+
+            System.out.println(
+                    "Error while deleting old CSV."
+            );
+
+            e.printStackTrace();
+
+            return;
+        }
 
         // ==========================================
-        // OPEN CSV IN APPEND MODE
+        // OPEN CSV
         // ==========================================
 
         try (
@@ -106,7 +134,7 @@ public class RealtorScraperTest extends BaseTest {
                         new BufferedWriter(
                                 new FileWriter(
                                         CSV_FILE,
-                                        true
+                                        false
                                 )
                         )
         ) {
@@ -115,48 +143,39 @@ public class RealtorScraperTest extends BaseTest {
             // CSV HEADERS
             // ==========================================
 
-            if (writeHeader) {
+            String[] headers = {
 
-                String[] headers = {
+                    "Agent Name",
+                    "Title",
+                    "Agent Phone 1",
+                    "Agent Phone 2",
+                    "Facebook",
+                    "LinkedIn",
+                    "Instagram",
+                    "Twitter",
+                    "Realtor Website",
+                    "Office Name",
+                    "Office Type",
+                    "Office Address",
+                    "Office Phone 1",
+                    "Office Phone 2",
+                    "Office Fax",
+                    "Office Telephone",
+                    "Office Website",
+                    "Agent URL"
+            };
 
-                        "Agent Name",
-                        "Title",
-                        "Agent Phone 1",
-                        "Agent Phone 2",
-                        "Facebook",
-                        "LinkedIn",
-                        "Instagram",
-                        "Twitter",
-                        "Realtor Website",
-                        "Office Name",
-                        "Office Type",
-                        "Office Address",
-                        "Office Phone 1",
-                        "Office Phone 2",
-                        "Office Fax",
-                        "Office Telephone",
-                        "Office Website",
-                        "Agent URL"
-                };
+            writer.write(
+                    createCsvLine(headers)
+            );
 
-                writer.write(
-                        createCsvLine(headers)
-                );
+            writer.newLine();
 
-                writer.newLine();
+            writer.flush();
 
-                writer.flush();
-
-                System.out.println(
-                        "CSV header created."
-                );
-
-            } else {
-
-                System.out.println(
-                        "Existing CSV found. Appending new records."
-                );
-            }
+            System.out.println(
+                    "New CSV created."
+            );
 
             int agentNumber = 0;
             int successfulRecords = 0;
@@ -223,7 +242,7 @@ public class RealtorScraperTest extends BaseTest {
                     }
 
                     // ==========================================
-                    // WAIT FOR AGENT INFORMATION
+                    // WAIT FOR PAGE TO RENDER
                     // ==========================================
 
                     WebDriverWait wait =
@@ -232,7 +251,6 @@ public class RealtorScraperTest extends BaseTest {
                                     Duration.ofSeconds(30)
                             );
 
-                    System.out.println();
                     System.out.println(
                             "Waiting for agent information..."
                     );
@@ -249,167 +267,73 @@ public class RealtorScraperTest extends BaseTest {
                         );
 
                         System.out.println(
-                                "Agent page loaded."
+                                "Agent element found."
                         );
 
                     } catch (Exception e) {
 
                         System.out.println(
-                                "Agent name locator not found."
-                        );
-
-                        System.out.println(
-                                "Continuing with available information..."
+                                "Agent name element not found after 30 seconds."
                         );
                     }
 
                     // ==========================================
-                    // AGENT DETAILS
+                    // EXTRA RENDER WAIT
                     // ==========================================
 
-                    String agentName =
-                            getText(
-                                    driver,
-                                    "(//span[@class='realtorCardName'])[1]"
-                            );
-
-                    String agentTitle =
-                            getText(
-                                    driver,
-                                    "(//div[@class='realtorCardTitle'])[1]"
-                            );
+                    sleep(2000);
 
                     // ==========================================
-                    // AGENT PHONE 1
+                    // SCRAPE DATA
                     // ==========================================
 
-                    String agentPhone1 =
-                            getText(
-                                    driver,
-                                    "(//span[@class='realtorCardContactNumber TelephoneNumber'])[1]"
-                            );
+                    String[] scrapedData =
+                            scrapeAgentData(driver);
 
                     // ==========================================
-                    // AGENT PHONE 2
+                    // RETRY IF MOST DATA IS N/A
                     // ==========================================
 
-                    String agentPhone2 =
-                            getText(
-                                    driver,
-                                    "(//span[@class='realtorCardContactNumber TollFreeNumber'])[1]"
-                            );
+                    int naCount =
+                            countNA(scrapedData);
+
+                    if (naCount >= 10) {
+
+                        System.out.println(
+                                "Most fields are N/A."
+                        );
+
+                        System.out.println(
+                                "Waiting and retrying page data..."
+                        );
+
+                        sleep(3000);
+
+                        scrapedData =
+                                scrapeAgentData(driver);
+                    }
 
                     // ==========================================
-                    // SOCIAL MEDIA
+                    // ASSIGN DATA
                     // ==========================================
 
-                    String facebookUrl =
-                            getHrefFromAncestor(
-                                    driver,
-                                    "(//img[@src='https://static.realtor.ca/images/common/icons/svg/facebook.svg'])[1]"
-                            );
-
-                    String linkedinUrl =
-                            getHrefFromAncestor(
-                                    driver,
-                                    "(//img[@src='https://static.realtor.ca/images/common/icons/svg/linkedin.svg'])[1]"
-                            );
-
-                    String instagramUrl =
-                            getHrefFromAncestor(
-                                    driver,
-                                    "(//img[@src='https://static.realtor.ca/images/common/icons/svg/instagram.svg'])[1]"
-                            );
-
-                    String twitterUrl =
-                            getHref(
-                                    driver,
-                                    "(//a[@aria-label='Twitter Link'])[1]"
-                            );
-
-                    // ==========================================
-                    // REALTOR WEBSITE
-                    // Grab URL from parent <a href="">
-                    // ==========================================
-
-                    String realtorWebsite =
-                            getHrefFromAncestor(
-                                    driver,
-                                    "(//span[@class='realtorCardContactNumber'])[1]"
-                            );
-
-                    // ==========================================
-                    // OFFICE DETAILS
-                    // ==========================================
-
-                    String officeName =
-                            getText(
-                                    driver,
-                                    "(//div[@class='officeCardName'])[1]"
-                            );
-
-                    String officeType =
-                            getText(
-                                    driver,
-                                    "(//div[@class='officeCardType'])[1]"
-                            );
-
-                    String officeAddress =
-                            getText(
-                                    driver,
-                                    "(//div[@class='officeCardAddress'])[1]"
-                            );
-
-                    // ==========================================
-                    // OFFICE PHONE 1
-                    // ==========================================
-
-                    String officePhone1 =
-                            getText(
-                                    driver,
-                                    "(//span[@class='officeCardContactNumber'])[1]"
-                            );
-
-                    // ==========================================
-                    // OFFICE PHONE 2
-                    // ==========================================
-
-                    String officePhone2 =
-                            getText(
-                                    driver,
-                                    "(//span[@class='officeCardContactNumber'])[2]"
-                            );
-
-                    // ==========================================
-                    // OFFICE FAX
-                    // ==========================================
-
-                    String officeFax =
-                            getText(
-                                    driver,
-                                    "(//div[@data-type='Fax']//span[@class='officeCardContactNumber'])[1]"
-                            );
-
-                    // ==========================================
-                    // OFFICE TELEPHONE
-                    // ==========================================
-
-                    String officeTelephone =
-                            getText(
-                                    driver,
-                                    "(//div[@data-type='Telephone']//span[@class='officeCardContactNumber'])[1]"
-                            );
-
-                    // ==========================================
-                    // OFFICE WEBSITE
-                    // Grab URL from parent <a href="">
-                    // ==========================================
-
-                    String officeWebsite =
-                            getHrefFromAncestor(
-                                    driver,
-                                    "(//span[normalize-space()='Office Website'])[1]"
-                            );
+                    String agentName = scrapedData[0];
+                    String agentTitle = scrapedData[1];
+                    String agentPhone1 = scrapedData[2];
+                    String agentPhone2 = scrapedData[3];
+                    String facebookUrl = scrapedData[4];
+                    String linkedinUrl = scrapedData[5];
+                    String instagramUrl = scrapedData[6];
+                    String twitterUrl = scrapedData[7];
+                    String realtorWebsite = scrapedData[8];
+                    String officeName = scrapedData[9];
+                    String officeType = scrapedData[10];
+                    String officeAddress = scrapedData[11];
+                    String officePhone1 = scrapedData[12];
+                    String officePhone2 = scrapedData[13];
+                    String officeFax = scrapedData[14];
+                    String officeTelephone = scrapedData[15];
+                    String officeWebsite = scrapedData[16];
 
                     // ==========================================
                     // PRINT SCRAPED DATA
@@ -541,7 +465,6 @@ public class RealtorScraperTest extends BaseTest {
                             agentUrl
                     };
 
-                    // Append record to CSV
                     writer.write(
                             createCsvLine(data)
                     );
@@ -555,7 +478,7 @@ public class RealtorScraperTest extends BaseTest {
 
                     System.out.println();
                     System.out.println(
-                            "Data appended to CSV."
+                            "Data written to CSV."
                     );
 
                 } catch (Exception e) {
@@ -604,15 +527,18 @@ public class RealtorScraperTest extends BaseTest {
             );
 
             System.out.println(
-                    "Total URLs     : " + agentUrls.size()
+                    "Total URLs     : "
+                            + agentUrls.size()
             );
 
             System.out.println(
-                    "Records saved  : " + successfulRecords
+                    "Records saved  : "
+                            + successfulRecords
             );
 
             System.out.println(
-                    "CSV file       : " + CSV_FILE
+                    "CSV file       : "
+                            + CSV_FILE
             );
 
         } catch (IOException e) {
@@ -639,19 +565,160 @@ public class RealtorScraperTest extends BaseTest {
     }
 
     // ==========================================
-    // GET TEXT
+    // SCRAPE ALL AGENT DATA
     // ==========================================
 
-    private String getText(
+    private String[] scrapeAgentData(
+            WebDriver driver
+    ) {
+
+        String[] data = new String[17];
+
+        // Agent Name
+        data[0] =
+                getTextWithWait(
+                        driver,
+                        "(//span[@class='realtorCardName'])[1]"
+                );
+
+        // Title
+        data[1] =
+                getTextWithWait(
+                        driver,
+                        "(//div[@class='realtorCardTitle'])[1]"
+                );
+
+        // Agent Phone 1
+        data[2] =
+                getTextWithWait(
+                        driver,
+                        "(//span[@class='realtorCardContactNumber TelephoneNumber'])[1]"
+                );
+
+        // Agent Phone 2
+        data[3] =
+                getTextWithWait(
+                        driver,
+                        "(//span[@class='realtorCardContactNumber TollFreeNumber'])[1]"
+                );
+
+        // Facebook
+        data[4] =
+                getHrefFromAncestor(
+                        driver,
+                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/facebook.svg'])[1]"
+                );
+
+        // LinkedIn
+        data[5] =
+                getHrefFromAncestor(
+                        driver,
+                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/linkedin.svg'])[1]"
+                );
+
+        // Instagram
+        data[6] =
+                getHrefFromAncestor(
+                        driver,
+                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/instagram.svg'])[1]"
+                );
+
+        // Twitter
+        data[7] =
+                getHref(
+                        driver,
+                        "(//a[@aria-label='Twitter Link'])[1]"
+                );
+
+        // Realtor Website
+        data[8] =
+                getHrefFromAncestor(
+                        driver,
+                        "(//span[@class='realtorCardContactNumber'])[1]"
+                );
+
+        // Office Name
+        data[9] =
+                getTextWithWait(
+                        driver,
+                        "(//div[@class='officeCardName'])[1]"
+                );
+
+        // Office Type
+        data[10] =
+                getTextWithWait(
+                        driver,
+                        "(//div[@class='officeCardType'])[1]"
+                );
+
+        // Office Address
+        data[11] =
+                getTextWithWait(
+                        driver,
+                        "(//div[@class='officeCardAddress'])[1]"
+                );
+
+        // Office Phone 1
+        data[12] =
+                getTextWithWait(
+                        driver,
+                        "(//span[@class='officeCardContactNumber'])[1]"
+                );
+
+        // Office Phone 2
+        data[13] =
+                getTextWithWait(
+                        driver,
+                        "(//span[@class='officeCardContactNumber'])[2]"
+                );
+
+        // Office Fax
+        data[14] =
+                getTextWithWait(
+                        driver,
+                        "(//div[@data-type='Fax']//span[@class='officeCardContactNumber'])[1]"
+                );
+
+        // Office Telephone
+        data[15] =
+                getTextWithWait(
+                        driver,
+                        "(//div[@data-type='Telephone']//span[@class='officeCardContactNumber'])[1]"
+                );
+
+        // Office Website
+        data[16] =
+                getHrefFromAncestor(
+                        driver,
+                        "(//span[normalize-space()='Office Website'])[1]"
+                );
+
+        return data;
+    }
+
+    // ==========================================
+    // GET TEXT WITH WAIT
+    // ==========================================
+
+    private String getTextWithWait(
             WebDriver driver,
             String xpath
     ) {
 
         try {
 
+            WebDriverWait wait =
+                    new WebDriverWait(
+                            driver,
+                            Duration.ofSeconds(10)
+                    );
+
             WebElement element =
-                    driver.findElement(
-                            By.xpath(xpath)
+                    wait.until(
+                            ExpectedConditions
+                                    .presenceOfElementLocated(
+                                            By.xpath(xpath)
+                                    )
                     );
 
             String text =
@@ -682,9 +749,18 @@ public class RealtorScraperTest extends BaseTest {
 
         try {
 
+            WebDriverWait wait =
+                    new WebDriverWait(
+                            driver,
+                            Duration.ofSeconds(10)
+                    );
+
             WebElement element =
-                    driver.findElement(
-                            By.xpath(xpath)
+                    wait.until(
+                            ExpectedConditions
+                                    .presenceOfElementLocated(
+                                            By.xpath(xpath)
+                                    )
                     );
 
             String href =
@@ -705,18 +781,7 @@ public class RealtorScraperTest extends BaseTest {
     }
 
     // ==========================================
-    // GET HREF FROM PARENT ANCHOR
-    // ==========================================
-    //
-    // Used for:
-    // Facebook
-    // LinkedIn
-    // Instagram
-    // Realtor Website
-    // Office Website
-    //
-    // Finds the target element and then
-    // gets the href from its nearest <a> parent.
+    // GET HREF FROM ANCESTOR
     // ==========================================
 
     private String getHrefFromAncestor(
@@ -726,9 +791,18 @@ public class RealtorScraperTest extends BaseTest {
 
         try {
 
+            WebDriverWait wait =
+                    new WebDriverWait(
+                            driver,
+                            Duration.ofSeconds(10)
+                    );
+
             WebElement element =
-                    driver.findElement(
-                            By.xpath(xpath)
+                    wait.until(
+                            ExpectedConditions
+                                    .presenceOfElementLocated(
+                                            By.xpath(xpath)
+                                    )
                     );
 
             WebElement anchor =
@@ -756,15 +830,48 @@ public class RealtorScraperTest extends BaseTest {
     }
 
     // ==========================================
-    // CREATE CSV LINE
+    // COUNT N/A
     // ==========================================
-    //
-    // Handles:
-    // commas
-    // quotes
-    // new lines
-    //
-    // so CSV columns remain correct.
+
+    private int countNA(
+            String[] data
+    ) {
+
+        int count = 0;
+
+        for (String value : data) {
+
+            if (value == null
+                    || value.equals("N/A")
+                    || value.trim().isEmpty()) {
+
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    // ==========================================
+    // SLEEP
+    // ==========================================
+
+    private void sleep(
+            long milliseconds
+    ) {
+
+        try {
+
+            Thread.sleep(milliseconds);
+
+        } catch (InterruptedException e) {
+
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // ==========================================
+    // CREATE CSV LINE
     // ==========================================
 
     private String createCsvLine(
