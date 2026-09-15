@@ -12,7 +12,6 @@ import java.util.List;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testng.annotations.Test;
 
@@ -29,6 +28,25 @@ public class RealtorScraperTest extends BaseTest {
     private static final String CSV_FILE =
             OUTPUT_DIRECTORY
                     + "/agent_data.csv";
+
+    /*
+     * Maximum time we wait for agent data on one browser attempt.
+     */
+    private static final int AGENT_WAIT_SECONDS = 5;
+
+    /*
+     * Maximum time allowed for page navigation.
+     */
+    private static final int PAGE_LOAD_SECONDS = 5;
+
+    /*
+     * Retry the URL one additional time if agent data
+     * is not found on the first browser.
+     */
+    private static final int MAX_ATTEMPTS = 2;
+
+    private static final String AGENT_NAME_XPATH =
+            "(//span[@class='realtorCardName'])[1]";
 
     @Test
     public void scrapeAgentDetails() {
@@ -61,7 +79,6 @@ public class RealtorScraperTest extends BaseTest {
             );
 
             e.printStackTrace();
-
             return;
         }
 
@@ -88,45 +105,18 @@ public class RealtorScraperTest extends BaseTest {
         }
 
         // ==========================================
-        // CREATE FRESH CSV
+        // CHECK CSV FILE
         // ==========================================
 
-        File csvFile = new File(CSV_FILE);
+        File csvFile =
+                new File(CSV_FILE);
 
-        try {
-
-            // Delete old CSV before every run
-            if (csvFile.exists()) {
-
-                if (csvFile.delete()) {
-
-                    System.out.println(
-                            "Old CSV deleted."
-                    );
-
-                } else {
-
-                    System.out.println(
-                            "Unable to delete old CSV."
-                    );
-
-                    return;
-                }
-            }
-
-        } catch (Exception e) {
-
-            System.out.println(
-                    "Error while deleting old CSV."
-            );
-
-            e.printStackTrace();
-
-            return;
-        }
+        boolean writeHeader =
+                !csvFile.exists()
+                        || csvFile.length() == 0;
 
         // ==========================================
-        // OPEN CSV
+        // OPEN CSV IN APPEND MODE
         // ==========================================
 
         try (
@@ -134,7 +124,7 @@ public class RealtorScraperTest extends BaseTest {
                         new BufferedWriter(
                                 new FileWriter(
                                         CSV_FILE,
-                                        false
+                                        true
                                 )
                         )
         ) {
@@ -143,39 +133,47 @@ public class RealtorScraperTest extends BaseTest {
             // CSV HEADERS
             // ==========================================
 
-            String[] headers = {
+            if (writeHeader) {
 
-                    "Agent Name",
-                    "Title",
-                    "Agent Phone 1",
-                    "Agent Phone 2",
-                    "Facebook",
-                    "LinkedIn",
-                    "Instagram",
-                    "Twitter",
-                    "Realtor Website",
-                    "Office Name",
-                    "Office Type",
-                    "Office Address",
-                    "Office Phone 1",
-                    "Office Phone 2",
-                    "Office Fax",
-                    "Office Telephone",
-                    "Office Website",
-                    "Agent URL"
-            };
+                String[] headers = {
 
-            writer.write(
-                    createCsvLine(headers)
-            );
+                        "Agent Name",
+                        "Title",
+                        "Agent Phone 1",
+                        "Agent Phone 2",
+                        "Facebook",
+                        "LinkedIn",
+                        "Instagram",
+                        "Twitter",
+                        "Realtor Website",
+                        "Office Name",
+                        "Office Type",
+                        "Office Address",
+                        "Office Phone 1",
+                        "Office Phone 2",
+                        "Office Fax",
+                        "Office Telephone",
+                        "Office Website",
+                        "Agent URL"
+                };
 
-            writer.newLine();
+                writer.write(
+                        createCsvLine(headers)
+                );
 
-            writer.flush();
+                writer.newLine();
+                writer.flush();
 
-            System.out.println(
-                    "New CSV created."
-            );
+                System.out.println(
+                        "CSV header created."
+                );
+
+            } else {
+
+                System.out.println(
+                        "Existing CSV found. Appending new records."
+                );
+            }
 
             int agentNumber = 0;
             int successfulRecords = 0;
@@ -195,317 +193,268 @@ public class RealtorScraperTest extends BaseTest {
 
                 agentNumber++;
 
-                WebDriver driver = null;
+                System.out.println();
+                System.out.println(
+                        "=========================================="
+                );
 
-                try {
+                System.out.println(
+                        "Processing Agent "
+                                + agentNumber
+                                + " of "
+                                + agentUrls.size()
+                );
 
-                    System.out.println();
-                    System.out.println(
-                            "=========================================="
-                    );
+                System.out.println(
+                        "=========================================="
+                );
 
-                    System.out.println(
-                            "Processing Agent "
-                                    + agentNumber
-                                    + " of "
-                                    + agentUrls.size()
-                    );
+                System.out.println(
+                        "URL: " + agentUrl
+                );
 
-                    System.out.println(
-                            "=========================================="
-                    );
+                boolean dataSaved = false;
 
-                    System.out.println(
-                            "Opening URL: "
-                                    + agentUrl
-                    );
+                // ==========================================
+                // MAX 2 ATTEMPTS
+                // ==========================================
 
-                    // ==========================================
-                    // CREATE NEW CHROME FOR EVERY URL
-                    // ==========================================
+                for (int attempt = 1;
+                     attempt <= MAX_ATTEMPTS && !dataSaved;
+                     attempt++) {
 
-                    driver = createDriver();
+                    WebDriver driver = null;
 
-                    // ==========================================
-                    // OPEN AGENT URL
-                    // ==========================================
+                    long startTime =
+                            System.currentTimeMillis();
 
                     try {
 
-                        driver.get(agentUrl);
-
-                    } catch (Exception e) {
-
+                        System.out.println();
                         System.out.println(
-                                "Page load timeout. Continuing..."
+                                "Browser attempt "
+                                        + attempt
+                                        + " of "
+                                        + MAX_ATTEMPTS
                         );
-                    }
 
-                    // ==========================================
-                    // WAIT FOR PAGE TO RENDER
-                    // ==========================================
+                        // ==========================================
+                        // CREATE FRESH CHROME
+                        // ==========================================
 
-                    WebDriverWait wait =
-                            new WebDriverWait(
-                                    driver,
-                                    Duration.ofSeconds(30)
+                        driver = createDriver();
+
+                        /*
+                         * Override the 30-second timeout from BaseTest
+                         * for this scraper.
+                         */
+                        driver.manage()
+                                .timeouts()
+                                .pageLoadTimeout(
+                                        Duration.ofSeconds(
+                                                PAGE_LOAD_SECONDS
+                                        )
+                                );
+
+                        // ==========================================
+                        // OPEN URL
+                        // ==========================================
+
+                        try {
+
+                            driver.get(agentUrl);
+
+                        } catch (Exception e) {
+
+                            /*
+                             * A 5-second page-load timeout does not
+                             * necessarily mean the page is useless.
+                             * Selenium may already have loaded enough
+                             * DOM content for us to scrape.
+                             */
+                            System.out.println(
+                                    "Page navigation reached timeout. Checking page data..."
+                            );
+                        }
+
+                        // ==========================================
+                        // WAIT FOR AGENT DATA
+                        // ==========================================
+
+                        boolean agentDataFound =
+                                waitForAgentData(
+                                        driver
+                                );
+
+                        if (!agentDataFound) {
+
+                            System.out.println(
+                                    "Agent data not found within "
+                                            + AGENT_WAIT_SECONDS
+                                            + " seconds."
                             );
 
-                    System.out.println(
-                            "Waiting for agent information..."
-                    );
+                            System.out.println(
+                                    "Closing browser and retrying..."
+                            );
 
-                    try {
+                            continue;
+                        }
 
-                        wait.until(
-                                ExpectedConditions
-                                        .presenceOfElementLocated(
-                                                By.xpath(
-                                                        "(//span[@class='realtorCardName'])[1]"
-                                                )
-                                        )
+                        System.out.println(
+                                "Agent data found. Scraping immediately..."
+                        );
+
+                        // ==========================================
+                        // SCRAPE DATA
+                        // ==========================================
+
+                        String[] scrapedData =
+                                scrapeAgentData(
+                                        driver
+                                );
+
+                        // ==========================================
+                        // CHECK WHETHER DATA WAS ACTUALLY FOUND
+                        // ==========================================
+
+                        int naCount =
+                                countNA(scrapedData);
+
+                        System.out.println(
+                                "N/A fields: " + naCount
+                        );
+
+                        /*
+                         * If almost everything is N/A, consider this
+                         * attempt unsuccessful and retry once.
+                         */
+                        if (naCount >= 10
+                                && attempt < MAX_ATTEMPTS) {
+
+                            System.out.println(
+                                    "Too much missing data. "
+                                            + "Retrying with a fresh browser..."
+                            );
+
+                            continue;
+                        }
+
+                        // ==========================================
+                        // PRINT SCRAPED DATA
+                        // ==========================================
+
+                        printScrapedData(
+                                scrapedData
+                        );
+
+                        // ==========================================
+                        // ADD AGENT URL
+                        // ==========================================
+
+                        String[] data =
+                                new String[18];
+
+                        System.arraycopy(
+                                scrapedData,
+                                0,
+                                data,
+                                0,
+                                scrapedData.length
+                        );
+
+                        /*
+                         * scrapedData contains 17 fields.
+                         * Agent URL becomes field 18.
+                         */
+                        data[17] = agentUrl;
+
+                        // ==========================================
+                        // WRITE TO CSV
+                        // ==========================================
+
+                        writer.write(
+                                createCsvLine(data)
+                        );
+
+                        writer.newLine();
+
+                        /*
+                         * Flush after every record so that data
+                         * remains saved even if the next URL fails.
+                         */
+                        writer.flush();
+
+                        successfulRecords++;
+                        dataSaved = true;
+
+                        long endTime =
+                                System.currentTimeMillis();
+
+                        long seconds =
+                                (endTime - startTime) / 1000;
+
+                        System.out.println();
+                        System.out.println(
+                                "Data saved successfully."
                         );
 
                         System.out.println(
-                                "Agent element found."
+                                "Processing time: "
+                                        + seconds
+                                        + " seconds"
                         );
 
                     } catch (Exception e) {
 
+                        System.out.println();
                         System.out.println(
-                                "Agent name element not found after 30 seconds."
+                                "Error during browser attempt "
+                                        + attempt
                         );
+
+                        System.out.println(
+                                "URL: " + agentUrl
+                        );
+
+                        e.printStackTrace();
+
+                    } finally {
+
+                        // ==========================================
+                        // ALWAYS CLOSE THIS BROWSER
+                        // ==========================================
+
+                        closeDriver(driver);
                     }
+                }
 
-                    // ==========================================
-                    // EXTRA RENDER WAIT
-                    // ==========================================
+                // ==========================================
+                // IF BOTH ATTEMPTS FAILED
+                // ==========================================
 
-                    sleep(2000);
-
-                    // ==========================================
-                    // SCRAPE DATA
-                    // ==========================================
-
-                    String[] scrapedData =
-                            scrapeAgentData(driver);
-
-                    // ==========================================
-                    // RETRY IF MOST DATA IS N/A
-                    // ==========================================
-
-                    int naCount =
-                            countNA(scrapedData);
-
-                    if (naCount >= 10) {
-
-                        System.out.println(
-                                "Most fields are N/A."
-                        );
-
-                        System.out.println(
-                                "Waiting and retrying page data..."
-                        );
-
-                        sleep(3000);
-
-                        scrapedData =
-                                scrapeAgentData(driver);
-                    }
-
-                    // ==========================================
-                    // ASSIGN DATA
-                    // ==========================================
-
-                    String agentName = scrapedData[0];
-                    String agentTitle = scrapedData[1];
-                    String agentPhone1 = scrapedData[2];
-                    String agentPhone2 = scrapedData[3];
-                    String facebookUrl = scrapedData[4];
-                    String linkedinUrl = scrapedData[5];
-                    String instagramUrl = scrapedData[6];
-                    String twitterUrl = scrapedData[7];
-                    String realtorWebsite = scrapedData[8];
-                    String officeName = scrapedData[9];
-                    String officeType = scrapedData[10];
-                    String officeAddress = scrapedData[11];
-                    String officePhone1 = scrapedData[12];
-                    String officePhone2 = scrapedData[13];
-                    String officeFax = scrapedData[14];
-                    String officeTelephone = scrapedData[15];
-                    String officeWebsite = scrapedData[16];
-
-                    // ==========================================
-                    // PRINT SCRAPED DATA
-                    // ==========================================
+                if (!dataSaved) {
 
                     System.out.println();
                     System.out.println(
-                            "------------------------------------------"
+                            "Both attempts failed."
                     );
 
                     System.out.println(
-                            "SCRAPED DATA"
+                            "Saving N/A record and continuing..."
                     );
 
-                    System.out.println(
-                            "------------------------------------------"
-                    );
-
-                    System.out.println(
-                            "Agent Name      : "
-                                    + agentName
-                    );
-
-                    System.out.println(
-                            "Title           : "
-                                    + agentTitle
-                    );
-
-                    System.out.println(
-                            "Agent Phone 1   : "
-                                    + agentPhone1
-                    );
-
-                    System.out.println(
-                            "Agent Phone 2   : "
-                                    + agentPhone2
-                    );
-
-                    System.out.println(
-                            "Facebook        : "
-                                    + facebookUrl
-                    );
-
-                    System.out.println(
-                            "LinkedIn        : "
-                                    + linkedinUrl
-                    );
-
-                    System.out.println(
-                            "Instagram       : "
-                                    + instagramUrl
-                    );
-
-                    System.out.println(
-                            "Twitter         : "
-                                    + twitterUrl
-                    );
-
-                    System.out.println(
-                            "Realtor Website : "
-                                    + realtorWebsite
-                    );
-
-                    System.out.println();
-
-                    System.out.println(
-                            "Office Name     : "
-                                    + officeName
-                    );
-
-                    System.out.println(
-                            "Office Type     : "
-                                    + officeType
-                    );
-
-                    System.out.println(
-                            "Office Address  : "
-                                    + officeAddress
-                    );
-
-                    System.out.println(
-                            "Office Phone 1  : "
-                                    + officePhone1
-                    );
-
-                    System.out.println(
-                            "Office Phone 2  : "
-                                    + officePhone2
-                    );
-
-                    System.out.println(
-                            "Office Fax      : "
-                                    + officeFax
-                    );
-
-                    System.out.println(
-                            "Office Telephone: "
-                                    + officeTelephone
-                    );
-
-                    System.out.println(
-                            "Office Website  : "
-                                    + officeWebsite
-                    );
-
-                    // ==========================================
-                    // WRITE DATA TO CSV
-                    // ==========================================
-
-                    String[] data = {
-
-                            agentName,
-                            agentTitle,
-                            agentPhone1,
-                            agentPhone2,
-                            facebookUrl,
-                            linkedinUrl,
-                            instagramUrl,
-                            twitterUrl,
-                            realtorWebsite,
-                            officeName,
-                            officeType,
-                            officeAddress,
-                            officePhone1,
-                            officePhone2,
-                            officeFax,
-                            officeTelephone,
-                            officeWebsite,
-                            agentUrl
-                    };
+                    String[] failedData =
+                            createNARecord(
+                                    agentUrl
+                            );
 
                     writer.write(
-                            createCsvLine(data)
+                            createCsvLine(failedData)
                     );
 
                     writer.newLine();
-
-                    // Flush after every record
                     writer.flush();
-
-                    successfulRecords++;
-
-                    System.out.println();
-                    System.out.println(
-                            "Data written to CSV."
-                    );
-
-                } catch (Exception e) {
-
-                    // ==========================================
-                    // URL FAILURE
-                    // ==========================================
-
-                    System.out.println();
-                    System.out.println(
-                            "Error processing Agent "
-                                    + agentNumber
-                    );
-
-                    System.out.println(
-                            "URL: " + agentUrl
-                    );
-
-                    e.printStackTrace();
-
-                } finally {
-
-                    // ==========================================
-                    // ALWAYS CLOSE CHROME
-                    // ==========================================
-
-                    closeDriver(driver);
                 }
             }
 
@@ -527,17 +476,17 @@ public class RealtorScraperTest extends BaseTest {
             );
 
             System.out.println(
-                    "Total URLs     : "
+                    "Total URLs    : "
                             + agentUrls.size()
             );
 
             System.out.println(
-                    "Records saved  : "
+                    "Records saved : "
                             + successfulRecords
             );
 
             System.out.println(
-                    "CSV file       : "
+                    "CSV file      : "
                             + CSV_FILE
             );
 
@@ -565,144 +514,11 @@ public class RealtorScraperTest extends BaseTest {
     }
 
     // ==========================================
-    // SCRAPE ALL AGENT DATA
+    // WAIT FOR AGENT DATA
     // ==========================================
 
-    private String[] scrapeAgentData(
+    private boolean waitForAgentData(
             WebDriver driver
-    ) {
-
-        String[] data = new String[17];
-
-        // Agent Name
-        data[0] =
-                getTextWithWait(
-                        driver,
-                        "(//span[@class='realtorCardName'])[1]"
-                );
-
-        // Title
-        data[1] =
-                getTextWithWait(
-                        driver,
-                        "(//div[@class='realtorCardTitle'])[1]"
-                );
-
-        // Agent Phone 1
-        data[2] =
-                getTextWithWait(
-                        driver,
-                        "(//span[@class='realtorCardContactNumber TelephoneNumber'])[1]"
-                );
-
-        // Agent Phone 2
-        data[3] =
-                getTextWithWait(
-                        driver,
-                        "(//span[@class='realtorCardContactNumber TollFreeNumber'])[1]"
-                );
-
-        // Facebook
-        data[4] =
-                getHrefFromAncestor(
-                        driver,
-                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/facebook.svg'])[1]"
-                );
-
-        // LinkedIn
-        data[5] =
-                getHrefFromAncestor(
-                        driver,
-                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/linkedin.svg'])[1]"
-                );
-
-        // Instagram
-        data[6] =
-                getHrefFromAncestor(
-                        driver,
-                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/instagram.svg'])[1]"
-                );
-
-        // Twitter
-        data[7] =
-                getHref(
-                        driver,
-                        "(//a[@aria-label='Twitter Link'])[1]"
-                );
-
-        // Realtor Website
-        data[8] =
-                getHrefFromAncestor(
-                        driver,
-                        "(//span[@class='realtorCardContactNumber'])[1]"
-                );
-
-        // Office Name
-        data[9] =
-                getTextWithWait(
-                        driver,
-                        "(//div[@class='officeCardName'])[1]"
-                );
-
-        // Office Type
-        data[10] =
-                getTextWithWait(
-                        driver,
-                        "(//div[@class='officeCardType'])[1]"
-                );
-
-        // Office Address
-        data[11] =
-                getTextWithWait(
-                        driver,
-                        "(//div[@class='officeCardAddress'])[1]"
-                );
-
-        // Office Phone 1
-        data[12] =
-                getTextWithWait(
-                        driver,
-                        "(//span[@class='officeCardContactNumber'])[1]"
-                );
-
-        // Office Phone 2
-        data[13] =
-                getTextWithWait(
-                        driver,
-                        "(//span[@class='officeCardContactNumber'])[2]"
-                );
-
-        // Office Fax
-        data[14] =
-                getTextWithWait(
-                        driver,
-                        "(//div[@data-type='Fax']//span[@class='officeCardContactNumber'])[1]"
-                );
-
-        // Office Telephone
-        data[15] =
-                getTextWithWait(
-                        driver,
-                        "(//div[@data-type='Telephone']//span[@class='officeCardContactNumber'])[1]"
-                );
-
-        // Office Website
-        data[16] =
-                getHrefFromAncestor(
-                        driver,
-                        "(//span[normalize-space()='Office Website'])[1]"
-                );
-
-        return data;
-    }
-
-    // ==========================================
-    // GET TEXT WITH WAIT
-    // ==========================================
-
-    private String getTextWithWait(
-            WebDriver driver,
-            String xpath
     ) {
 
         try {
@@ -710,15 +526,386 @@ public class RealtorScraperTest extends BaseTest {
             WebDriverWait wait =
                     new WebDriverWait(
                             driver,
-                            Duration.ofSeconds(10)
+                            Duration.ofSeconds(
+                                    AGENT_WAIT_SECONDS
+                            )
                     );
 
+            wait.until(
+                    d -> {
+
+                        try {
+
+                            WebElement element =
+                                    d.findElement(
+                                            By.xpath(
+                                                    AGENT_NAME_XPATH
+                                            )
+                                    );
+
+                            return element.isDisplayed()
+                                    && !element
+                                    .getText()
+                                    .trim()
+                                    .isEmpty();
+
+                        } catch (Exception e) {
+
+                            return false;
+                        }
+                    }
+            );
+
+            return true;
+
+        } catch (Exception e) {
+
+            return false;
+        }
+    }
+
+    // ==========================================
+    // SCRAPE AGENT DATA
+    // ==========================================
+
+    private String[] scrapeAgentData(
+            WebDriver driver
+    ) {
+
+        // ==========================================
+        // AGENT DETAILS
+        // ==========================================
+
+        String agentName =
+                getText(
+                        driver,
+                        "(//span[@class='realtorCardName'])[1]"
+                );
+
+        String agentTitle =
+                getText(
+                        driver,
+                        "(//div[@class='realtorCardTitle'])[1]"
+                );
+
+        // ==========================================
+        // AGENT PHONE 1
+        // ==========================================
+
+        String agentPhone1 =
+                getText(
+                        driver,
+                        "(//span[@class='realtorCardContactNumber TelephoneNumber'])[1]"
+                );
+
+        // ==========================================
+        // AGENT PHONE 2
+        // ==========================================
+
+        String agentPhone2 =
+                getText(
+                        driver,
+                        "(//span[@class='realtorCardContactNumber TollFreeNumber'])[1]"
+                );
+
+        // ==========================================
+        // SOCIAL MEDIA
+        // ==========================================
+
+        String facebookUrl =
+                getHrefFromAncestor(
+                        driver,
+                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/facebook.svg'])[1]"
+                );
+
+        String linkedinUrl =
+                getHrefFromAncestor(
+                        driver,
+                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/linkedin.svg'])[1]"
+                );
+
+        String instagramUrl =
+                getHrefFromAncestor(
+                        driver,
+                        "(//img[@src='https://static.realtor.ca/images/common/icons/svg/instagram.svg'])[1]"
+                );
+
+        String twitterUrl =
+                getHref(
+                        driver,
+                        "(//a[@aria-label='Twitter Link'])[1]"
+                );
+
+        // ==========================================
+        // REALTOR WEBSITE
+        // Grab href behind the span
+        // ==========================================
+
+        String realtorWebsite =
+                getHrefFromAncestor(
+                        driver,
+                        "(//span[@class='realtorCardContactNumber'])[1]"
+                );
+
+        // ==========================================
+        // OFFICE DETAILS
+        // ==========================================
+
+        String officeName =
+                getText(
+                        driver,
+                        "(//div[@class='officeCardName'])[1]"
+                );
+
+        String officeType =
+                getText(
+                        driver,
+                        "(//div[@class='officeCardType'])[1]"
+                );
+
+        String officeAddress =
+                getText(
+                        driver,
+                        "(//div[@class='officeCardAddress'])[1]"
+                );
+
+        // ==========================================
+        // OFFICE PHONE 1
+        // ==========================================
+
+        String officePhone1 =
+                getText(
+                        driver,
+                        "(//span[@class='officeCardContactNumber'])[1]"
+                );
+
+        // ==========================================
+        // OFFICE PHONE 2
+        // ==========================================
+
+        String officePhone2 =
+                getText(
+                        driver,
+                        "(//span[@class='officeCardContactNumber'])[2]"
+                );
+
+        // ==========================================
+        // OFFICE FAX
+        // ==========================================
+
+        String officeFax =
+                getText(
+                        driver,
+                        "(//div[@data-type='Fax']//span[@class='officeCardContactNumber'])[1]"
+                );
+
+        // ==========================================
+        // OFFICE TELEPHONE
+        // ==========================================
+
+        String officeTelephone =
+                getText(
+                        driver,
+                        "(//div[@data-type='Telephone']//span[@class='officeCardContactNumber'])[1]"
+                );
+
+        // ==========================================
+        // OFFICE WEBSITE
+        // Grab href behind "Office Website"
+        // ==========================================
+
+        String officeWebsite =
+                getHrefFromAncestor(
+                        driver,
+                        "(//span[normalize-space()='Office Website'])[1]"
+                );
+
+        // ==========================================
+        // RETURN DATA
+        // ==========================================
+
+        return new String[] {
+
+                agentName,
+                agentTitle,
+                agentPhone1,
+                agentPhone2,
+                facebookUrl,
+                linkedinUrl,
+                instagramUrl,
+                twitterUrl,
+                realtorWebsite,
+                officeName,
+                officeType,
+                officeAddress,
+                officePhone1,
+                officePhone2,
+                officeFax,
+                officeTelephone,
+                officeWebsite
+        };
+    }
+
+    // ==========================================
+    // PRINT SCRAPED DATA
+    // ==========================================
+
+    private void printScrapedData(
+            String[] data
+    ) {
+
+        System.out.println();
+        System.out.println(
+                "------------------------------------------"
+        );
+
+        System.out.println(
+                "SCRAPED DATA"
+        );
+
+        System.out.println(
+                "------------------------------------------"
+        );
+
+        System.out.println(
+                "Agent Name      : " + data[0]
+        );
+
+        System.out.println(
+                "Title           : " + data[1]
+        );
+
+        System.out.println(
+                "Agent Phone 1   : " + data[2]
+        );
+
+        System.out.println(
+                "Agent Phone 2   : " + data[3]
+        );
+
+        System.out.println(
+                "Facebook        : " + data[4]
+        );
+
+        System.out.println(
+                "LinkedIn        : " + data[5]
+        );
+
+        System.out.println(
+                "Instagram       : " + data[6]
+        );
+
+        System.out.println(
+                "Twitter         : " + data[7]
+        );
+
+        System.out.println(
+                "Realtor Website : " + data[8]
+        );
+
+        System.out.println();
+
+        System.out.println(
+                "Office Name     : " + data[9]
+        );
+
+        System.out.println(
+                "Office Type     : " + data[10]
+        );
+
+        System.out.println(
+                "Office Address  : " + data[11]
+        );
+
+        System.out.println(
+                "Office Phone 1  : " + data[12]
+        );
+
+        System.out.println(
+                "Office Phone 2  : " + data[13]
+        );
+
+        System.out.println(
+                "Office Fax      : " + data[14]
+        );
+
+        System.out.println(
+                "Office Telephone: " + data[15]
+        );
+
+        System.out.println(
+                "Office Website  : " + data[16]
+        );
+    }
+
+    // ==========================================
+    // CREATE N/A RECORD
+    // ==========================================
+
+    private String[] createNARecord(
+            String agentUrl
+    ) {
+
+        return new String[] {
+
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                agentUrl
+        };
+    }
+
+    // ==========================================
+    // COUNT N/A
+    // ==========================================
+
+    private int countNA(
+            String[] data
+    ) {
+
+        int count = 0;
+
+        for (String value : data) {
+
+            if (value == null
+                    || value.trim().isEmpty()
+                    || value.equals("N/A")) {
+
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    // ==========================================
+    // GET TEXT
+    // ==========================================
+
+    private String getText(
+            WebDriver driver,
+            String xpath
+    ) {
+
+        try {
+
             WebElement element =
-                    wait.until(
-                            ExpectedConditions
-                                    .presenceOfElementLocated(
-                                            By.xpath(xpath)
-                                    )
+                    driver.findElement(
+                            By.xpath(xpath)
                     );
 
             String text =
@@ -749,18 +936,9 @@ public class RealtorScraperTest extends BaseTest {
 
         try {
 
-            WebDriverWait wait =
-                    new WebDriverWait(
-                            driver,
-                            Duration.ofSeconds(10)
-                    );
-
             WebElement element =
-                    wait.until(
-                            ExpectedConditions
-                                    .presenceOfElementLocated(
-                                            By.xpath(xpath)
-                                    )
+                    driver.findElement(
+                            By.xpath(xpath)
                     );
 
             String href =
@@ -791,18 +969,9 @@ public class RealtorScraperTest extends BaseTest {
 
         try {
 
-            WebDriverWait wait =
-                    new WebDriverWait(
-                            driver,
-                            Duration.ofSeconds(10)
-                    );
-
             WebElement element =
-                    wait.until(
-                            ExpectedConditions
-                                    .presenceOfElementLocated(
-                                            By.xpath(xpath)
-                                    )
+                    driver.findElement(
+                            By.xpath(xpath)
                     );
 
             WebElement anchor =
@@ -830,47 +999,6 @@ public class RealtorScraperTest extends BaseTest {
     }
 
     // ==========================================
-    // COUNT N/A
-    // ==========================================
-
-    private int countNA(
-            String[] data
-    ) {
-
-        int count = 0;
-
-        for (String value : data) {
-
-            if (value == null
-                    || value.equals("N/A")
-                    || value.trim().isEmpty()) {
-
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    // ==========================================
-    // SLEEP
-    // ==========================================
-
-    private void sleep(
-            long milliseconds
-    ) {
-
-        try {
-
-            Thread.sleep(milliseconds);
-
-        } catch (InterruptedException e) {
-
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    // ==========================================
     // CREATE CSV LINE
     // ==========================================
 
@@ -881,13 +1009,16 @@ public class RealtorScraperTest extends BaseTest {
         StringBuilder line =
                 new StringBuilder();
 
-        for (int i = 0; i < values.length; i++) {
+        for (int i = 0;
+             i < values.length;
+             i++) {
 
             if (i > 0) {
                 line.append(",");
             }
 
-            String value = values[i];
+            String value =
+                    values[i];
 
             if (value == null) {
                 value = "";
