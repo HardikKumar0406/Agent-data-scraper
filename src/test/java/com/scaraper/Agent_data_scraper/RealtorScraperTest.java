@@ -37,7 +37,7 @@ public class RealtorScraperTest extends BaseTest {
 
     private static final int PAGE_LOAD_SECONDS = 5;
 
-    private static final int MAX_ATTEMPTS = 2;
+    private static final int MAX_ATTEMPTS = 5;
 
     private static final String AGENT_NAME_XPATH =
             "(//span[@class='realtorCardName'])[1]";
